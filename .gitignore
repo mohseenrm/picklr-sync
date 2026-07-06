@@ -70,6 +70,10 @@ web_modules/
 .env.*
 !.env.example
 
+# picklr-sync debug snapshots (page dumps on crawl failure)
+debug-*.png
+debug-*.html
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

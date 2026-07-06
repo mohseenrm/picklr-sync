@@ -1,0 +1,84 @@
+name: Sync Picklr to Calendar
+
+on:
+  schedule:
+    # GitHub cron is UTC and does NOT observe DST. To hold ~6:15 AM Pacific
+    # year-round we schedule both offsets; only one is "correct" per season and
+    # the other fires an hour off. The sync is idempotent, so an extra run is
+    # harmless (0 changes → no email when NOTIFY_ON_NO_CHANGES=false).
+    - cron: "15 13 * * *" # 06:15 PDT (UTC-7), summer
+    - cron: "15 14 * * *" # 06:15 PST (UTC-8), winter
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (crawl + plan only, no calendar writes / email)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: picklr-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Cache the Playwright browser download keyed on the installed version.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(pnpm ls playwright --depth=0 --parseable --long 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chromium
+        uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run sync
+        env:
+          PICKLR_EMAIL: ${{ secrets.PICKLR_EMAIL }}
+          PICKLR_PASSWORD: ${{ secrets.PICKLR_PASSWORD }}
+          PICKLR_BASE_URL: ${{ vars.PICKLR_BASE_URL }}
+          PICKLR_VENUE_ADDRESS: ${{ vars.PICKLR_VENUE_ADDRESS }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FROM_EMAIL: ${{ vars.FROM_EMAIL }}
+          NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+          TIMEZONE: ${{ vars.TIMEZONE }}
+          DAYS_AHEAD: ${{ vars.DAYS_AHEAD }}
+          NOTIFY_ON_NO_CHANGES: ${{ vars.NOTIFY_ON_NO_CHANGES }}
+          # Empty on scheduled runs → falsey → real sync.
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: pnpm sync
+
+      - name: Upload debug artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug
+          path: |
+            debug-*.png
+            debug-*.html
+          if-no-files-found: ignore
+          retention-days: 5

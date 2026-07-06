@@ -1,13 +1,27 @@
 {
   "name": "picklr-sync",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Crawl Picklr bookings and sync them to Google Calendar, with email status via Resend",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "sync": "tsx src/main.ts",
+    "sync:headed": "HEADED=true tsx src/main.ts",
+    "sync:dry": "DRY_RUN=true tsx src/main.ts",
+    "auth:google": "tsx src/scripts/google-auth.ts",
+    "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.28.0"
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "googleapis": "^144.0.0",
+    "playwright": "^1.52.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "resend": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
 }
