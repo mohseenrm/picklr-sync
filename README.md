@@ -51,21 +51,21 @@ If login or scraping fails, the crawler writes `debug-*.png` and `debug-*.html` 
 
 All via environment variables — see [`.env.example`](.env.example).
 
-| Variable | Required | Default | Notes |
-|---|---|---|---|
-| `PICKLR_EMAIL` / `PICKLR_PASSWORD` | Yes | — | Picklr login |
-| `PICKLR_BASE_URL` | No | `https://fremont.thepicklr.com` | Change subdomain for other locations |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes | — | OAuth Desktop-app client |
-| `GOOGLE_REFRESH_TOKEN` | Yes | — | From `pnpm auth:google` |
-| `GOOGLE_CALENDAR_ID` | No | `primary` | Or a dedicated calendar ID |
-| `RESEND_API_KEY` | Yes | — | Resend API key |
-| `FROM_EMAIL` | No | `onboarding@resend.dev` | Verified sender (or Resend's test sender) |
-| `NOTIFICATION_EMAIL` | Yes | — | Where the status email goes |
-| `TIMEZONE` | No | `America/Los_Angeles` | IANA tz for rendering + event times |
-| `DAYS_AHEAD` | No | `30` | Only sync bookings within N days (`0` = no limit) |
-| `DRY_RUN` | No | `false` | Compute the plan, write nothing |
-| `HEADED` | No | `false` | Show the browser |
-| `NOTIFY_ON_NO_CHANGES` | No | `false` | Email even when nothing changed |
+| Variable                                    | Required | Default                         | Notes                                             |
+| ------------------------------------------- | -------- | ------------------------------- | ------------------------------------------------- |
+| `PICKLR_EMAIL` / `PICKLR_PASSWORD`          | Yes      | —                               | Picklr login                                      |
+| `PICKLR_BASE_URL`                           | No       | `https://fremont.thepicklr.com` | Change subdomain for other locations              |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes      | —                               | OAuth Desktop-app client                          |
+| `GOOGLE_REFRESH_TOKEN`                      | Yes      | —                               | From `pnpm auth:google`                           |
+| `GOOGLE_CALENDAR_ID`                        | No       | `primary`                       | Or a dedicated calendar ID                        |
+| `RESEND_API_KEY`                            | Yes      | —                               | Resend API key                                    |
+| `FROM_EMAIL`                                | No       | `onboarding@resend.dev`         | Verified sender (or Resend's test sender)         |
+| `NOTIFICATION_EMAIL`                        | Yes      | —                               | Where the status email goes                       |
+| `TIMEZONE`                                  | No       | `America/Los_Angeles`           | IANA tz for rendering + event times               |
+| `DAYS_AHEAD`                                | No       | `30`                            | Only sync bookings within N days (`0` = no limit) |
+| `DRY_RUN`                                   | No       | `false`                         | Compute the plan, write nothing                   |
+| `HEADED`                                    | No       | `false`                         | Show the browser                                  |
+| `NOTIFY_ON_NO_CHANGES`                      | No       | `false`                         | Email even when nothing changed                   |
 
 ## Tuning the scraper
 
@@ -82,16 +82,16 @@ The workflow in [`.github/workflows/sync.yml`](.github/workflows/sync.yml) runs 
 1. Push to GitHub.
 2. **Settings → Secrets and variables → Actions → Secrets** (New repository secret):
 
-   | Secret | Value |
-   |---|---|
-   | `PICKLR_EMAIL` | your Picklr login email |
-   | `PICKLR_PASSWORD` | your Picklr password |
-   | `GOOGLE_CLIENT_ID` | OAuth client id |
-   | `GOOGLE_CLIENT_SECRET` | OAuth client secret |
-   | `GOOGLE_REFRESH_TOKEN` | from `pnpm auth:google` |
-   | `GOOGLE_CALENDAR_ID` | e.g. `…@group.calendar.google.com` |
-   | `RESEND_API_KEY` | Resend API key |
-   | `NOTIFICATION_EMAIL` | where status emails go |
+   | Secret                 | Value                              |
+   | ---------------------- | ---------------------------------- |
+   | `PICKLR_EMAIL`         | your Picklr login email            |
+   | `PICKLR_PASSWORD`      | your Picklr password               |
+   | `GOOGLE_CLIENT_ID`     | OAuth client id                    |
+   | `GOOGLE_CLIENT_SECRET` | OAuth client secret                |
+   | `GOOGLE_REFRESH_TOKEN` | from `pnpm auth:google`            |
+   | `GOOGLE_CALENDAR_ID`   | e.g. `…@group.calendar.google.com` |
+   | `RESEND_API_KEY`       | Resend API key                     |
+   | `NOTIFICATION_EMAIL`   | where status emails go             |
 
 3. **Variables** tab (optional — defaults apply if omitted): `PICKLR_BASE_URL`, `PICKLR_VENUE_ADDRESS`, `FROM_EMAIL`, `TIMEZONE`, `DAYS_AHEAD`, `NOTIFY_ON_NO_CHANGES`.
 4. Test first: **Actions → Sync Picklr to Calendar → Run workflow**, tick **dry run**. Then run once for real.
@@ -100,14 +100,6 @@ The workflow in [`.github/workflows/sync.yml`](.github/workflows/sync.yml) runs 
 > **DST note:** GitHub cron is UTC and doesn't observe daylight saving, so the workflow schedules both `15 13` and `15 14` UTC to stay near 6:15 AM Pacific year-round. Both fire (an hour apart); the "off-season" one just produces a 0-change no-op run — harmless because the sync is idempotent. Set `NOTIFY_ON_NO_CHANGES` to `false` (or leave unset) so those no-op runs stay quiet.
 
 On failure the workflow uploads the `debug-*` page snapshots as an artifact for inspection.
-
-### Cost
-
-| Service | Free tier | Typical usage |
-|---|---|---|
-| GitHub Actions | 2,000 min/mo | ~30 min/mo |
-| Resend | 3,000 emails/mo | ~30/mo |
-| Google Calendar API | free | tiny |
 
 ## Project structure
 
