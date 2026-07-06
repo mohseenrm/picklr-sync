@@ -136,6 +136,6 @@ picklr-sync/
 
 ## License
 
-ISC
+[Apache License 2.0](LICENSE)
 
 <sub>Pickleball illustration by <a href="https://www.vecteezy.com/free-vector/pickleball">Vecteezy</a>.</sub>
