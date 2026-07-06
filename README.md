@@ -1,15 +1,28 @@
-# picklr-sync
+<p align="center">
+  <img src="assets/pickleball.svg" alt="Pickleball illustration" width="220">
+</p>
 
-Crawls your [Picklr](https://fremont.thepicklr.com) reservations each morning, syncs them to Google Calendar (adds new, updates changed, removes cancelled), and emails you a status summary via [Resend](https://resend.com).
+<h1 align="center">picklr-sync</h1>
 
-Runs locally or on a daily GitHub Actions cron. Built with Playwright (stealth Chromium clears Picklr's Cloudflare challenge).
+<p align="center">
+  <a href="https://github.com/mohseenrm/picklr-sync/actions/workflows/sync.yml"><img src="https://github.com/mohseenrm/picklr-sync/actions/workflows/sync.yml/badge.svg" alt="Sync Picklr to Calendar"></a>
+</p>
+
+<p align="center">
+  Crawls your <a href="https://fremont.thepicklr.com">Picklr</a> reservations each morning, syncs them to Google Calendar
+  (adds new, updates changed, removes cancelled), and emails you a status summary via <a href="https://resend.com">Resend</a>.<br>
+  Runs locally or on a daily GitHub Actions cron. Built with Playwright (stealth Chromium clears Picklr's Cloudflare challenge).
+</p>
+
+---
 
 ## How it works
 
 1. Logs into Picklr via headless Chromium (Devise login, stealth plugin clears the Cloudflare "Just a moment" challenge).
-2. Scrapes your upcoming reservations from the member dashboard.
+2. Scrapes your upcoming reservations from `/account/reservations` (court reservations, priority requests, and programs/clinics).
 3. Diffs them against the calendar events it previously created (matched by a stable `picklrId` tag) and reconciles: **add** new bookings, **update** changed ones, **remove** cancelled ones.
-4. Emails you what changed (or nothing, unless `NOTIFY_ON_NO_CHANGES=true`).
+4. Each event is created with you as an accepted guest, popup reminders at **26 h / 30 m / 15 m / 10 m**, and a location of your venue address plus any court detail. Titles are classified as `🎾 Open Play: …`, `🎾 Lesson: …`, or `🎾 Reservation: …`.
+5. Emails you what changed (or nothing, unless `NOTIFY_ON_NO_CHANGES=true`).
 
 ## Quick start (local)
 
@@ -55,9 +68,10 @@ All via environment variables — see [`.env.example`](.env.example).
 | ------------------------------------------- | -------- | ------------------------------- | ------------------------------------------------- |
 | `PICKLR_EMAIL` / `PICKLR_PASSWORD`          | Yes      | —                               | Picklr login                                      |
 | `PICKLR_BASE_URL`                           | No       | `https://fremont.thepicklr.com` | Change subdomain for other locations              |
+| `PICKLR_VENUE_ADDRESS`                      | No       | `124 N 35th St, Seattle, WA 98103` | Physical address set as the event location     |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes      | —                               | OAuth Desktop-app client                          |
 | `GOOGLE_REFRESH_TOKEN`                      | Yes      | —                               | From `pnpm auth:google`                           |
-| `GOOGLE_CALENDAR_ID`                        | No       | `primary`                       | Or a dedicated calendar ID                        |
+| `GOOGLE_CALENDAR_ID`                        | No       | `primary`                       | `primary` or a `…@group.calendar.google.com` id (a base64-pasted id is auto-decoded) |
 | `RESEND_API_KEY`                            | Yes      | —                               | Resend API key                                    |
 | `FROM_EMAIL`                                | No       | `onboarding@resend.dev`         | Verified sender (or Resend's test sender)         |
 | `NOTIFICATION_EMAIL`                        | Yes      | —                               | Where the status email goes                       |
@@ -69,7 +83,7 @@ All via environment variables — see [`.env.example`](.env.example).
 
 ## Tuning the scraper
 
-Picklr's reservation markup varies by location/theme, so [`src/crawler.ts`](src/crawler.ts) uses a resilient strategy: it probes several likely booking URLs and extracts any row containing both a date and a time range, guessing the title/location. If your dashboard uses different markup, run `pnpm sync:dry` (or headed), inspect the `debug-*.html` dump, and tighten the selectors in `extractRows()`.
+[`src/crawler.ts`](src/crawler.ts) scrapes `/account/reservations`, reading each `.ui.segments` booking card for title, category, date, time, and a stable id from its cancel/manage link. Picklr's markup can vary by location/theme — if a different club's dashboard differs, run `pnpm sync:dry` (or `HEADED=true`), inspect the auto-written `debug-*.html` dump, and adjust the selectors in `extractRows()`.
 
 Idempotency is by design: every calendar event carries `extendedProperties.private.picklrId` (Picklr's own lesson/reservation id, e.g. `pk-4004219`, falling back to a hash of start+title). Each run lists the events it previously created, then **adds** new bookings, **updates** changed ones (time/title/location/reminders), and **removes** cancelled ones. Re-running is safe and converges — it only ever touches events it created and never reads or modifies your other calendar entries.
 
@@ -116,9 +130,12 @@ picklr-sync/
 │   └── scripts/
 │       └── google-auth.ts    # One-time OAuth refresh-token helper
 ├── emails/notification.html  # Email template
+├── assets/pickleball.svg     # README artwork
 └── .github/workflows/sync.yml
 ```
 
 ## License
 
 ISC
+
+<sub>Pickleball illustration by <a href="https://www.vecteezy.com/free-vector/pickleball">Vecteezy</a>.</sub>
