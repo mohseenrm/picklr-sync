@@ -32,6 +32,7 @@ interface ExistingEvent {
   end?: string;
   summary?: string;
   location?: string;
+  description?: string;
   /** Sorted popup-reminder minutes, for change detection. */
   reminderMinutes: number[];
 }
@@ -67,6 +68,7 @@ async function listSyncedEvents(
         end: ev.end?.dateTime ?? ev.end?.date ?? undefined,
         summary: ev.summary ?? undefined,
         location: ev.location ?? undefined,
+        description: ev.description ?? undefined,
         reminderMinutes,
       });
     }
@@ -77,8 +79,8 @@ async function listSyncedEvents(
 }
 
 function toEventBody(b: Booking): calendar_v3.Schema$Event {
-  // Location = physical venue address, plus any court/reservation detail the
-  // crawler captured (facility name or court number in b.location).
+  // Location = physical venue address, plus any court detail the crawler
+  // captured (e.g. "Court 9").
   const detail = courtDetail(b);
   const location = detail
     ? `${config.picklr.venueAddress} — ${detail}`
@@ -87,8 +89,7 @@ function toEventBody(b: Booking): calendar_v3.Schema$Event {
   return {
     summary: b.title,
     location,
-    description:
-      "Synced from Picklr by picklr-sync." + (b.raw ? `\n\n${b.raw}` : ""),
+    description: buildDescription(b),
     start: { dateTime: b.start, timeZone: config.behavior.timezone },
     end: { dateTime: b.end, timeZone: config.behavior.timezone },
     // Add yourself as a guest so the event shows an accepted attendee and can
@@ -110,12 +111,23 @@ function toEventBody(b: Booking): calendar_v3.Schema$Event {
   };
 }
 
-/** Court / reservation detail to append to the address, if we scraped any. */
+/** Court detail to append to the address, if we scraped any. */
 function courtDetail(b: Booking): string {
+  if (b.court) return b.court.trim();
   const court = b.raw?.match(/court\s*#?\s*\w+/i)?.[0];
-  if (court) return court.replace(/\s+/g, " ").trim();
-  // Fall back to the facility label the crawler put in `location`.
-  return b.location?.trim() ?? "";
+  return court ? court.replace(/\s+/g, " ").trim() : "";
+}
+
+/** Event description: court + participants. Kept clean (no raw button noise). */
+function buildDescription(b: Booking): string {
+  const lines: string[] = [];
+  if (b.court) lines.push(`Court: ${b.court}`);
+  if (b.participants?.length) {
+    lines.push(`Players: ${b.participants.join(", ")}`);
+  }
+  if (lines.length) lines.push("");
+  lines.push("Synced from Picklr by picklr-sync.");
+  return lines.join("\n");
 }
 
 /** True if the existing calendar event already matches the booking. */
@@ -129,6 +141,7 @@ function isUnchanged(existing: ExistingEvent, b: Booking): boolean {
     new Date(existing.end).getTime() === new Date(b.end).getTime();
   const sameTitle = (existing.summary ?? "") === body.summary;
   const sameLoc = (existing.location ?? "") === (body.location ?? "");
+  const sameDesc = (existing.description ?? "") === (body.description ?? "");
 
   const wantReminders = (body.reminders?.overrides ?? [])
     .filter((o) => o.method === "popup" && typeof o.minutes === "number")
@@ -138,7 +151,9 @@ function isUnchanged(existing: ExistingEvent, b: Booking): boolean {
     existing.reminderMinutes.length === wantReminders.length &&
     existing.reminderMinutes.every((m, i) => m === wantReminders[i]);
 
-  return sameStart && sameEnd && sameTitle && sameLoc && sameReminders;
+  return (
+    sameStart && sameEnd && sameTitle && sameLoc && sameDesc && sameReminders
+  );
 }
 
 /**

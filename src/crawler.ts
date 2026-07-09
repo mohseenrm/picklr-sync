@@ -14,6 +14,8 @@ interface RawBooking {
   dateText: string;
   timeText: string;
   location: string;
+  court: string;
+  participants: string[];
   category: string;
   /** Stable source id from Picklr (lesson_id / reservation id), if found. */
   sourceId: string;
@@ -175,15 +177,24 @@ async function scrapeReservations(page: Page): Promise<RawBooking[]> {
 }
 
 /**
- * Extract each booking card. Runs in the page. Picklr markup (Semantic UI):
- *   .ui.segments                      ← one card
- *     .ui.label.uppercase             ← category ("Socials", "Court", …)
- *     a.big.black.bold.text           ← title
- *     .text.grey.semi.bold            ← facility/location
- *     .text.black.semi.bold           ← date "Mon, Jul 06"
- *     .text.grey > div                ← time "05:00 PM - 07:00 PM"
- *     a[href*='cancel'] / [href*='lesson_id'] / [href*='reservation']
- *                                     ← stable source id
+ * Extract each booking card. Runs in the page. Picklr has TWO card shapes:
+ *
+ * Court reservations (#reservations > .my-booking-item > .ui.card.fluid):
+ *   .ui.label.uppercase        ← category ("reservation")
+ *   a.big.black.bold.text      ← facility, e.g. "Fremont | The PICKLR"
+ *   .text.grey.semi.bold span  ← court, e.g. "»  Court 9"
+ *   .text.black.semi.bold      ← date "Thu, Jul 09"
+ *   .meta                      ← time "07:00 PM - 08:00 PM"
+ *   .UserAvatar[data-tooltip]  ← participants
+ *   id="list-res-<id>" / a[href*='/reservations/RES…']  ← stable id
+ *
+ * Programs / clinics (#clinics .ui.segments):
+ *   .ui.label.uppercase        ← category ("Socials")
+ *   a.big.black.bold.text      ← program name
+ *   .text.grey.semi.bold       ← facility
+ *   .text.black.semi.bold      ← date
+ *   .text.grey > div           ← time
+ *   a[href*='lesson_id=<id>']  ← stable id
  */
 async function extractRows(page: Page): Promise<RawBooking[]> {
   // NOTE: the body is passed as a source string and reconstructed with
@@ -196,23 +207,21 @@ async function extractRows(page: Page): Promise<RawBooking[]> {
     var DATE_RE = /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,?\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?\\s+\\d{1,2}/i;
     function clean(s) { return (s || "").replace(/\\s+/g, " ").trim(); }
 
-    var out = [];
-    var ids = ["#reservations", "#priority_requests", "#clinics"];
-    var roots = [];
-    for (var i = 0; i < ids.length; i++) {
-      var r = document.querySelector(ids[i]);
-      if (r) roots.push(r);
-    }
-    if (roots.length === 0) roots.push(document.body);
-
+    // Collect cards from every section: reservation cards (.ui.card) and
+    // program/clinic cards (.ui.segments). Dedupe by element.
     var cards = [];
-    for (var j = 0; j < roots.length; j++) {
-      var found = roots[j].querySelectorAll(".ui.segments");
-      for (var k = 0; k < found.length; k++) {
-        if (cards.indexOf(found[k]) === -1) cards.push(found[k]);
+    function collect(sel) {
+      var found = document.querySelectorAll(sel);
+      for (var i = 0; i < found.length; i++) {
+        if (cards.indexOf(found[i]) === -1) cards.push(found[i]);
       }
     }
+    collect("#reservations .ui.card");
+    collect("#priority_requests .ui.card");
+    collect("#priority_requests .ui.segments");
+    collect("#clinics .ui.segments");
 
+    var out = [];
     for (var c = 0; c < cards.length; c++) {
       var card = cards[c];
       var text = clean(card.textContent);
@@ -228,17 +237,38 @@ async function extractRows(page: Page): Promise<RawBooking[]> {
       var labelEl = card.querySelector(".ui.label");
       var category = clean(labelEl && labelEl.textContent);
 
-      var locEl = card.querySelector(".text.grey.semi.bold");
-      var location = clean(locEl && locEl.textContent);
+      // Court/location: reservation cards nest it in .text.grey.semi.bold span;
+      // program cards put the facility name directly in .text.grey.semi.bold.
+      var court = "";
+      var locBlock = card.querySelector(".text.grey.semi.bold");
+      var location = clean(locBlock && locBlock.textContent);
+      var courtMatch = location.match(/court\\s*#?\\s*\\w+/i);
+      if (courtMatch) court = clean(courtMatch[0]);
 
+      // Participants (reservation cards only).
+      var participants = [];
+      var avatars = card.querySelectorAll(".UserAvatar[data-tooltip]");
+      for (var a = 0; a < avatars.length; a++) {
+        var name = clean(avatars[a].getAttribute("data-tooltip"));
+        if (name && participants.indexOf(name) === -1) participants.push(name);
+      }
+
+      // Stable id: reservation cards → RES code or list-res-<n> or numeric
+      // reservationId; program cards → lesson_id.
       var sourceId = "";
-      var links = card.querySelectorAll("a[href]");
-      for (var l = 0; l < links.length; l++) {
-        var href = links[l].getAttribute("href") || "";
-        var m = href.match(/lesson_id=(\\d+)/)
-          || href.match(/reservations?\\/(\\d+)/)
-          || href.match(/clinics\\/(\\d+)/);
-        if (m) { sourceId = m[1]; break; }
+      if (card.id && /list-res-(\\d+)/.test(card.id)) {
+        sourceId = "res-" + card.id.match(/list-res-(\\d+)/)[1];
+      }
+      if (!sourceId) {
+        var links = card.querySelectorAll("a[href]");
+        for (var l = 0; l < links.length; l++) {
+          var href = links[l].getAttribute("href") || "";
+          // Bare lesson number keeps ids stable with events synced earlier.
+          var m = href.match(/lesson_id=(\\d+)/);
+          if (m) { sourceId = m[1]; break; }
+          var rm = href.match(/\\/reservations\\/(RES[A-Z0-9]+)/i);
+          if (rm) { sourceId = "res-" + rm[1]; break; }
+        }
       }
 
       out.push({
@@ -246,6 +276,8 @@ async function extractRows(page: Page): Promise<RawBooking[]> {
         dateText: dateMatch[0].trim(),
         timeText: timeMatch[0].trim(),
         location: location,
+        court: court,
+        participants: participants,
         category: category,
         sourceId: sourceId,
         raw: text.slice(0, 300)
@@ -305,6 +337,8 @@ function normalize(raws: RawBooking[]): Booking[] {
       start,
       end,
       location: r.location || undefined,
+      court: r.court || undefined,
+      participants: r.participants?.length ? r.participants : undefined,
       raw: r.raw,
     };
     // Prefer Picklr's own id (stable across time/title edits); fall back to a
@@ -321,13 +355,20 @@ function normalize(raws: RawBooking[]): Booking[] {
 /**
  * Build a calendar title. We classify the booking as Open Play / Lesson /
  * Reservation from its name + category, prefix a 🎾 tag for scannability, and
- * keep the specific program name. Examples:
+ * keep the specific detail. Examples:
  *   "DUPR Open Play - 4.0+" (Socials)   → "🎾 Open Play: DUPR Open Play - 4.0+"
  *   "Private Lesson w/ Coach"           → "🎾 Lesson: Private Lesson w/ Coach"
- *   "Court 3"                           → "🎾 Reservation: Court 3"
+ *   facility "Fremont…" + court "Court 9" (reservation) → "🎾 Court Reservation: Court 9"
  */
 function buildTitle(r: RawBooking): string {
   const hay = `${r.title} ${r.category}`.toLowerCase();
+
+  // Court reservations: the card title is just the facility name, so use the
+  // court label as the meaningful detail instead.
+  if (/reservation/.test(r.category.toLowerCase())) {
+    return r.court ? `🎾 Court Reservation: ${r.court}` : "🎾 Court Reservation";
+  }
+
   let kind: string;
   if (/open play/.test(hay)) kind = "Open Play";
   else if (/lesson|clinic|coach|private|instruct/.test(hay)) kind = "Lesson";
