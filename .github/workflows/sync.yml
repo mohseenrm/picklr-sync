@@ -19,6 +19,9 @@ concurrency:
   group: picklr-sync
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -82,3 +85,39 @@ jobs:
             debug-*.html
           if-no-files-found: ignore
           retention-days: 5
+
+  keepalive:
+    needs: sync
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check commit age
+        id: age
+        run: |
+          last=$(git log -1 --format=%ct)
+          age_days=$(( ( $(date -u +%s) - last ) / 86400 ))
+          echo "Last commit ${age_days}d ago"
+          if [ "$age_days" -ge 30 ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push heartbeat
+        if: steps.age.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BOT: github-actions[bot]
+        run: |
+          bot_id=$(gh api "users/$BOT" --jq .id)
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/keepalive
+          git config user.name "$BOT"
+          git config user.email "${bot_id}+${BOT}@users.noreply.github.com"
+          git add .github/keepalive
+          git commit -m "chore(ci): keepalive heartbeat [skip ci]"
+          git push
