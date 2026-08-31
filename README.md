@@ -115,6 +115,8 @@ The workflow in [`.github/workflows/sync.yml`](.github/workflows/sync.yml) runs 
 
 On failure the workflow uploads the `debug-*` page snapshots as an artifact for inspection.
 
+> **Keepalive:** GitHub disables a public repo's `schedule` trigger after 60 days with no commits. It measures repo activity, not cron health — a workflow that succeeds every day still gets switched off, silently, and the sync just stops. The `keepalive` job guards against that: after a successful scheduled run it checks the age of the last commit and, once that passes 30 days, pushes a `chore(ci): keepalive heartbeat` commit touching only [`.github/keepalive`](.github/keepalive). That works out to roughly one commit a month, and the 30-day trigger leaves a month of headroom under the cutoff even if runs fail for a while. The heartbeat contains **only a UTC timestamp** — this repo is public and booking titles, participant names and scraped `raw` text are all PII, so no crawl output is passed to the job or written to the file. Re-enable manually any time with `gh workflow enable sync.yml`.
+
 ## Project structure
 
 ```
