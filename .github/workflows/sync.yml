@@ -2,18 +2,14 @@ name: Sync Picklr to Calendar
 
 on:
   schedule:
-    # GitHub cron is UTC and does NOT observe DST, so each target time needs a
-    # PDT (UTC-7) and PST (UTC-8) entry; the off-season one fires an hour off.
-    # The sync is idempotent, so an extra run is harmless (0 changes -> no email
-    # when NOTIFY_ON_NO_CHANGES=false).
+    # GitHub cron is UTC and does NOT observe DST. These are pinned to PDT
+    # (UTC-7), so they drift an hour later during PST (winter).
     #
     # Times are set ~35 min BEFORE the target because GitHub heavily queues
     # scheduled runs on public repos. Odd minutes avoid the contested
     # :00/:15/:30 slots, which were seeing multi-hour delays.
-    - cron: "23 12 * * *" # 05:23 PDT -> ~06:00 PT morning, summer
-    - cron: "23 13 * * *" # 05:23 PST -> ~06:00 PT morning, winter
-    - cron: "23 18 * * *" # 11:23 PDT -> ~12:00 PT midday, summer
-    - cron: "23 19 * * *" # 11:23 PST -> ~12:00 PT midday, winter
+    - cron: "23 12 * * *" # 05:23 PDT -> ~06:00 PT morning
+    - cron: "23 18 * * *" # 11:23 PDT -> ~12:00 PT midday
   workflow_dispatch:
     inputs:
       dry_run:
